@@ -6,8 +6,10 @@ import java.security.DigestException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.stream.LongStream;
 
 import static com.company.Constants.MAX_BLOCK_SIZE;
+import static com.company.Constants.MIN_BLOCK_SIZE;
 
 public class Deduplicator {
 
@@ -17,13 +19,20 @@ public class Deduplicator {
     private final Map<HashValue, Integer> seenHashes = new HashMap<>();
     private final List<HashValue> hashValues = new ArrayList<>();
     private final List<Integer> chunk_to_hash_mapping = new ArrayList<>();
+    private final long[] gear = generate_gear();
+
+    private long[] generate_gear() {
+        final Random random = new Random();
+        return LongStream.generate(random::nextLong).limit(256).toArray();
+    }
 
     public DedupInfo dedup(RandomAccessFile input) throws IOException, NoSuchAlgorithmException, DigestException {
         byte[] buffer = new byte[MAX_BLOCK_SIZE];
-        int cursor = 0;
+        long cursor = 0;
         int current_chunck_size;
-        while(input.read(buffer, 0, MAX_BLOCK_SIZE) != -1) {
-            current_chunck_size = decide_chunck_size(buffer);
+        int nread;
+        while((nread = input.read(buffer, 0, MAX_BLOCK_SIZE)) != -1) {
+            current_chunck_size = decide_chunck_size(buffer, nread);
             process_chunck(buffer, current_chunck_size);
             cursor += current_chunck_size;
             input.seek(cursor);
@@ -31,8 +40,20 @@ public class Deduplicator {
         return new DedupInfo(chunk_to_hash_mapping, seenHashes.size());
     }
 
-    private int decide_chunck_size(byte[] buffer) {
-        return 10;
+    private int decide_chunck_size(byte[] buffer, int nread) {
+        final long mask = 0x0000d93003530000L;
+        long fingerprint = 0;
+        int cursor;
+        if (nread <= MIN_BLOCK_SIZE)
+            return nread;
+
+        for (cursor = MIN_BLOCK_SIZE; cursor < buffer.length; cursor++) {
+            fingerprint = fingerprint << 1 + gear[buffer[cursor] & 0xFF];
+            if ((fingerprint & mask) == 0)
+                    return cursor;
+        }
+        return MAX_BLOCK_SIZE;
+        //return 10;
     }
 
     private boolean encountered_hash(HashValue hashValue) {
@@ -63,17 +84,6 @@ public class Deduplicator {
             chunck_index = process_new_hash(hashValue, buffer, chunck_size);
         }
         chunk_to_hash_mapping.add(chunck_index);
-    }
-
-
-    public static class BlockPointer {
-        final long offset;
-        final long size;
-
-        public BlockPointer(long offset, long size) {
-            this.offset = offset;
-            this.size = size;
-        }
     }
 
     public static class HashValue {
