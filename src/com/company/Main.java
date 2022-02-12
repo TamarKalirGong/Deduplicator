@@ -51,12 +51,13 @@ public class Main {
         final RandomAccessFile input = new RandomAccessFile(args[INPUT_FILE_PARAMERTER_INDEX], "r"); //autoclose
         final Deduplicator deduplicator = new Deduplicator();
         final Deduplicator.DedupInfo dedupInfo = deduplicator.dedup(input);
-        DeduplicationWriter.write_deduplicated_file(dedupInfo, new FileOutputStream(args[OUTPUT_FILE_PARAMERTER_INDEX]));
+        DeduplicationWriter.write_deduplicated_file(dedupInfo, new FileOutputStream(args[OUTPUT_FILE_PARAMERTER_INDEX]), input);
     }
 
-    private static void undedup(String[] args) throws IOException, DigestException, NoSuchAlgorithmException {
-        Deduplicator.DedupInfo dedupInfo = new DeduplicationReader().read_deduplicated_file(new FileInputStream(args[INPUT_FILE_PARAMERTER_INDEX]));
-        DeduplicationWriter.write_undeduplicated_file(dedupInfo, new FileOutputStream(args[OUTPUT_FILE_PARAMERTER_INDEX]));
+    private static void undedup(String[] args) throws IOException {
+        final RandomAccessFile input = new RandomAccessFile(args[INPUT_FILE_PARAMERTER_INDEX], "r"); //autoclose
+        Deduplicator.DedupInfo dedupInfo = new DeduplicationReader().read_deduplicated_file(new RandomAccessFile(args[INPUT_FILE_PARAMERTER_INDEX], "r"));
+        DeduplicationWriter.write_undeduplicated_file(dedupInfo, new FileOutputStream(args[OUTPUT_FILE_PARAMERTER_INDEX]), input);
     }
 
 }

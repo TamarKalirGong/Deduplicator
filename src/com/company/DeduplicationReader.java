@@ -1,50 +1,47 @@
 package com.company;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.company.DeduplicationWriter.name_for_chunck_file;
+import static com.company.DeduplicationWriter.name_for_chunk_file;
+import static com.company.Deduplicator.ChunkDescriptor;
+import static com.company.Deduplicator.DedupInfo;
+
 
 public class DeduplicationReader {
     ByteBuffer metadata_buffer = ByteBuffer.allocate(4);
 
-    private int read_int(FileInputStream input) throws IOException {
-        input.read(metadata_buffer.array(), 0, 4);
-        return metadata_buffer.getInt(0);
+    List<ChunkDescriptor> read_chunks(int num_of_unique_hashes, RandomAccessFile input, byte[] buffer) throws IOException {
+        final List<ChunkDescriptor> chunkDescriptors = new ArrayList<>();
+        long pos = 8;
+        for(int i = 0; i < num_of_unique_hashes; i++) {
+            int chunk_length = input.readInt();
+            pos += 4;
+            ChunkDescriptor chunkDescriptor = new ChunkDescriptor(pos, chunk_length);
+            pos += chunk_length;
+            input.seek(pos);
+            chunkDescriptors.add(chunkDescriptor);
+        }
+        return chunkDescriptors;
     }
 
-    void read_chunks_and_generate_chunk_files(int num_of_unique_hashes, FileInputStream input, byte[] buffer) {
-        IntStream.range(0, num_of_unique_hashes).forEach(index -> {
-            try {
-                int chunk_length = read_int(input);
-                input.read(buffer, 0, chunk_length);
-                try (FileOutputStream writer = new FileOutputStream(name_for_chunck_file(index))) {
-                    writer.write(buffer, 0, chunk_length);
-                }
-            }catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    public Deduplicator.DedupInfo read_deduplicated_file(FileInputStream input) throws IOException {
+    public DedupInfo read_deduplicated_file(RandomAccessFile input) throws IOException {
         byte[] buffer = new byte[Constants.MAX_BLOCK_SIZE];
-        int num_of_unique_hashes = read_int(input);
-        int num_of_chunks = read_int(input);
-        read_chunks_and_generate_chunk_files(num_of_unique_hashes, input, buffer);
+        int num_of_unique_hashes = input.readInt();
+        int num_of_chunks = input.readInt();
+        List<ChunkDescriptor> chunks = read_chunks(num_of_unique_hashes, input, buffer);
         List<Integer> hash_indexes = read_hash_indices(num_of_chunks, input);
-        return new Deduplicator.DedupInfo(hash_indexes, num_of_unique_hashes);
+        return new DedupInfo(hash_indexes, chunks, num_of_unique_hashes);
     }
 
-    private List<Integer> read_hash_indices(int num_of_chunks, FileInputStream input) {
+    private List<Integer> read_hash_indices(int num_of_chunks, RandomAccessFile input) {
         return IntStream.range(0, num_of_chunks).map((index) -> {
             try {
-                return read_int(input);
+                return input.readInt();
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
